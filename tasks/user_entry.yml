@@ -1,0 +1,28 @@
+- assert:
+    that:
+      - user_entry.user is defined
+      - user_entry.password is defined
+      - user_entry.description is defined
+      - ldap_data_admin_dn is defined
+      - ldap_data_password is defined
+
+# SHA is used for idempotency, SSHA has different salt each time
+- name: "compute {{ user_entry.user }} password hash"
+  command:
+    argv: [ 'slappasswd', '-h', '{SHA}', '-s', "{{ user_entry.password }}" ]
+  register: ldap_user_entry_password_hash
+  changed_when: False
+  no_log: True
+
+- name: "create {{ user_entry.user }} user entry"
+  ldap_entry:
+    dn: "cn={{ user_entry.user }},{{ ldap_basedn }}"
+    objectClass:
+      - simpleSecurityObject
+      - organizationalRole
+    attributes:
+      description: "{{ user_entry.description }}"
+      userPassword: "{{ ldap_user_entry_password_hash.stdout }}"
+    state: present
+    bind_dn: "{{ ldap_data_admin_dn }}"
+    bind_pw: "{{ ldap_data_password }}"

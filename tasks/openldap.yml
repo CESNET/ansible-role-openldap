@@ -1,0 +1,316 @@
+- name: "compute base DN"
+  set_fact:
+    ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
+
+- name: "compute data admin DN"
+  set_fact:
+    ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
+
+- name: "backports repo"
+  apt_repository:
+    repo: "deb http://deb.debian.org/debian {{ ansible_distribution_release }}-backports main"
+    state: present
+    filename: "{{ ansible_distribution_release }}-backports"
+    update_cache: yes
+
+# available debconf options for slapd are in https://salsa.debian.org/openldap-team/openldap/-/blob/master/debian/slapd.templates
+- name: "configure domain for OpenLDAP using debconf"
+  debconf:
+    name: slapd
+    question: slapd/domain
+    vtype: string
+    value: '{{ ldap_domain }}'
+
+- name: "configure attribute o for top entry using debconf"
+  debconf:
+    name: slapd
+    question: shared/organization
+    vtype: string
+    value: "{{ ldap_top_organization }}"
+
+- name: "configure purging OpenLDAP database when uninstalling using debconf"
+  debconf:
+    name: slapd
+    question: slapd/purge_database
+    vtype: boolean
+    value: 'true'
+
+- name: "configure data admin password for OpenLDAP using debconf"
+  debconf:
+    name: slapd
+    question: "{{ item }}"
+    vtype: password
+    value: "{{ ldap_data_password }}"
+  # wrongly reports as changed even when not changed, see https://github.com/ansible/ansible/issues/47676
+  changed_when: False
+  no_log: True
+  loop:
+    - slapd/password1
+    - slapd/password2
+
+- name: "install software packages"
+  apt:
+    state: present
+    default_release: "{{ ansible_distribution_release }}-backports"
+    name:
+      - slapd
+      - ldap-utils
+      - python-ldap
+
+- name: "hold slapd package from upgrading"
+  when: ldap_hold_package
+  dpkg_selections:
+    name: slapd
+    selection: hold
+
+# SHA is used for idempotency, SSHA has different salt each time
+- name: "compute config admin password hash"
+  command:
+    argv: [ 'slappasswd', '-h', '{SHA}', '-s', "{{ ldap_config_password }}" ]
+  register: ldap_config_admin_password_hash
+  changed_when: False
+  no_log: True
+
+- name: "set config admin password"
+  ldap_attr:
+    dn: olcDatabase={0}config,cn=config
+    name: olcRootPW
+    values: "{{ ldap_config_admin_password_hash.stdout }}"
+    state: exact
+  no_log: True
+
+- name: "add openldap user to ssl-cert group"
+  user:
+    name: openldap
+    groups: ssl-cert
+    append: yes
+  register: openldap_ssl_cert_group
+
+- name: "restart OpenLDAP after openldap user added to group ssl-cert"
+  service:
+    name: slapd
+    state: restarted
+  when: openldap_ssl_cert_group.changed
+
+- name: "create file for modifying LDAP TLS settings"
+  copy:
+    dest: "/etc/ldap/ssl.ldif"
+    content: |
+      dn: cn=config
+      changetype: modify
+      replace: olcTLSCertificateFile
+      olcTLSCertificateFile: {{ ldap_certificate_file }}
+      -
+      replace: olcTLSCertificateKeyFile
+      olcTLSCertificateKeyFile: {{ ldap_certificate_key_file }}
+      -
+      replace: olcTLSCACertificateFile
+      olcTLSCACertificateFile: {{ ldap_certificate_chain_file }}
+      -
+  register: ssl_ldif
+
+- name: "change OpenLDAP TLS settings"
+  command: /usr/bin/ldapmodify -Q -H ldapi:/// -Y EXTERNAL -f /etc/ldap/ssl.ldif
+  when: ssl_ldif.changed
+
+- name: "enable secure port, plain ldap and local connection"
+  lineinfile:
+    dest: /etc/default/slapd
+    regexp: ^SLAPD_SERVICES=
+    line: SLAPD_SERVICES="ldaps:/// ldapi:/// ldap:///"
+  register: secure_port_enabled
+
+- name: "restart OpenLDAP after enabling TLS"
+  service:
+    name: slapd
+    state: restarted
+  when: secure_port_enabled.changed or ssl_ldif.changed
+
+- name: "create users"
+  include_tasks: user_entry.yml
+  loop: "{{ ldap_users }}"
+  loop_control:
+    loop_var: user_entry
+
+- name: "create replica user"
+  when: ldap_master_replica
+  include_tasks: user_entry.yml
+  vars:
+    user_entry:
+      user: 'replication'
+      password: "{{ ldap_replication_password }}"
+      description: "user for LDAP replication"
+
+- name: "LDAP access rules empty"
+  set_fact:
+    olcAccess_values: []
+    oldAccess_replication:
+      - >-
+        to dn.subtree="{{ ldap_basedn }}"
+        by dn.exact="cn=replication,{{ ldap_basedn }}" read
+        by * break
+
+- name: "LDAP access rule for replication must be first"
+  when: ldap_master_replica
+  set_fact:
+    olcAccess_values: "{{ olcAccess_values + oldAccess_replication }}"
+
+- name: "LDAP access rules start"
+  set_fact:
+    olcAccess_values: "{{ olcAccess_values + ldap_access_rules_start }}"
+
+- name: "additional LDAP access rules"
+  set_fact:
+    olcAccess_values: "{{ olcAccess_values + ldap_access_rules_additional }}"
+
+- name: "LDAP access rules end"
+  set_fact:
+    olcAccess_values: "{{ olcAccess_values + ldap_access_rules_end }}"
+
+- name: "numbering olcAcccess values with their indexes"
+  set_fact:
+    olcAccess_numbered_values: "{{ olcAccess_numbered_values| default([]) +  [ ''.join(('{',idx|string,'}',item)) ] }}"
+  loop: "{{ olcAccess_values }}"
+  loop_control:
+    index_var: idx
+
+- debug:
+    var: olcAccess_numbered_values
+
+- name: "modify OpenLDAP access rights"
+  ldap_attr:
+    dn: olcDatabase={1}mdb,cn=config
+    name: olcAccess
+    values: "{{ olcAccess_numbered_values }}"
+    state: exact
+
+- name: "set unlimited size of searches"
+  ldap_attr:
+    dn: olcDatabase={-1}frontend,cn=config
+    name: olcSizeLimit
+    values: "{{ ldap_size_limit }}"
+    state: exact
+
+- name: "replication"
+  when: ldap_master_replica
+  block:
+    - name: "no limits for replica"
+      ldap_attr:
+        dn: olcDatabase={1}mdb,cn=config
+        name: olcLimits
+        values:
+          - '{0}dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
+        state: exact
+
+    - name: "modules for replica"
+      ldap_attr:
+        dn: cn=module{0},cn=config
+        name: olcModuleLoad
+        values:
+          - '{1}syncprov'
+          - '{2}accesslog'
+        state: present
+
+    - name: "directory for accesslog"
+      file:
+        path: /var/lib/ldap/accesslog
+        state: directory
+        owner: openldap
+        group: openldap
+        mode: '0755'
+
+    - name: "accesslog database"
+      ldap_entry:
+        dn: "olcDatabase={2}mdb,cn=config"
+        objectClass:
+          - olcDatabaseConfig
+          - olcMdbConfig
+        attributes:
+          olcDatabase: '{2}mdb'
+          olcDbDirectory: /var/lib/ldap/accesslog
+          olcSuffix: cn=accesslog
+          olcAccess: '{0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read'
+          olcLastMod: 'TRUE'
+          olcMaxDerefDepth: 15
+          olcReadOnly: 'FALSE'
+          olcLimits: 'dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
+          olcSizeLimit: unlimited
+          olcTimeLimit: unlimited
+          olcMonitoring: 'TRUE'
+          olcDbCheckpoint: '0 0'
+          olcDbIndex:
+            - entryCSN eq
+            - objectClass eq
+            - reqEnd eq
+            - reqResult eq
+            - reqStart eq
+            - reqDN eq
+          olcDbMode: '0600'
+          olcDbSearchStack: 16
+          olcDbMaxsize: 85899345920
+        state: present
+
+    - name: "accesslog overlay"
+      ldap_entry:
+        dn: "olcOverlay={0}accesslog,olcDatabase={1}mdb,cn=config"
+        objectClass:
+          - olcAccessLogConfig
+        attributes:
+          olcOverlay: '{0}accesslog'
+          olcAccessLogDb: cn=accesslog
+          olcAccessLogOps: writes
+          olcAccessLogSuccess: 'TRUE'
+          olcAccessLogPurge: '2+00:00 1+00:00'
+        state: present
+
+    - name: "syncprov provider for main database"
+      ldap_entry:
+        dn: "olcOverlay={1}syncprov,olcDatabase={1}mdb,cn=config"
+        objectClass:
+          - olcSyncProvConfig
+        attributes:
+          olcOverlay: '{1}syncprov'
+          olcSpCheckpoint: '100 10'
+        state: present
+
+    - name: "syncprov provider for accesslog"
+      ldap_entry:
+        dn: "olcOverlay={0}syncprov,olcDatabase={2}mdb,cn=config"
+        objectClass:
+          - olcSyncProvConfig
+        attributes:
+          olcOverlay: '{0}syncprov'
+          olcSpCheckpoint: '100 10'
+          olcSpNoPresent: 'TRUE'
+          olcSpReloadHint: 'TRUE'
+        state: present
+
+- name: "create ou=People branch"
+  when: not ldap_slave_replica
+  ldap_entry:
+    dn: "ou=People,{{ ldap_basedn }}"
+    objectClass: organizationalUnit
+    state: present
+    bind_dn: "{{ ldap_data_admin_dn }}"
+    bind_pw: "{{ ldap_data_password }}"
+
+- name: "replication on slave"
+  when: ldap_slave_replica
+  ldap_attr:
+    dn: "olcDatabase={1}mdb,cn=config"
+    name: olcSyncrepl
+    values: >-
+      {0}provider={{ ldap_master_url }}
+      type=refreshAndPersist
+      rid=0
+      retry="5 5 300 +"
+      searchbase="{{ ldap_basedn }}"
+      attrs="*,+"
+      bindmethod=simple
+      binddn="cn=replication,{{ ldap_basedn }}"
+      credentials={{ ldap_replication_password }}
+      tls_cacert={{ ldap_slave_tls_cacert }}
+      logbase="cn=accesslog"
+      logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
+      syncdata=accesslog
+    state: exact

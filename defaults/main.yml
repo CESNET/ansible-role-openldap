@@ -1,0 +1,47 @@
+ldap_domain: 'example.org'
+ldap_top_organization: 'example'
+ldap_data_password: 'test'
+ldap_config_password: 'test'
+ldap_hold_package: no
+ldap_certificate_file: '/etc/ldap/cert.pem'
+ldap_certificate_key_file: '/etc/ldap/privkey.pem'
+ldap_certificate_chain_file: '/etc/ldap/chain.pem'
+ldap_access_rules_start:
+  # value are in YAML folded style (newlines are replaced with spaces) with chomping (no newline at the end)
+  - >-
+    to attrs=userPassword
+    by self write
+    by anonymous auth
+    by * none
+  - >-
+    to attrs=shadowLastChange
+    by self write
+    by * read
+  - >-
+    to dn.subtree="{{ ldap_basedn }}"
+    by dn.exact="cn=proxy,{{ ldap_basedn }}" read
+    by * break
+ldap_access_rules_additional: []
+ldap_access_rules_end:
+  - >-
+    to *
+    by self read
+    by * break
+  - >-
+    to *
+    by users search
+    by * break
+ldap_size_limit: unlimited
+ldap_master_replica: no
+ldap_replication_password: 'test'
+ldap_slave_replica: no
+ldap_slave_tls_cacert: '/etc/ldap/masterca.pem'
+ldap_master_url: 'ldaps://ldap.example.org'
+#ldap_users:
+#  - user: proxy
+#    password: test
+#    description: "user for IdP Proxy"
+ldap_users: []
+
+ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
+ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
