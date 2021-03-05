@@ -17,10 +17,6 @@ ldap_access_rules_start:
     to attrs=shadowLastChange
     by self write
     by * read
-  - >-
-    to dn.subtree="{{ ldap_basedn }}"
-    by dn.exact="cn=proxy,{{ ldap_basedn }}" read
-    by * break
 ldap_access_rules_additional: []
 ldap_access_rules_end:
   - >-
