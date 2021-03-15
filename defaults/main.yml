@@ -39,5 +39,8 @@ ldap_master_url: 'ldaps://ldap.example.org'
 #    description: "user for IdP Proxy"
 ldap_users: []
 
+# whether to configure memberOf overlay for adding the attribute memberOf to group members
+ldap_memberOf_overlay: no
+
 ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
 ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
