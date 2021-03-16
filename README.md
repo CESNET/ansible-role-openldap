@@ -1,6 +1,34 @@
 # cesnet.openldap
 
-Ansible role for installing OpenLDAP server on Debian.
+Ansible role for installing OpenLDAP server on Debian. It supports:
+* installing a single server
+* installing a **master** replica server
+* installing a **slave** replica server
+* activating **memberOf overlay** for consistent memberOf attribute of users
+* setting **strong password hashing** algorithm ARGON2 as the default hashing method
+
+## Variables
+
+* **ldap_domain** - DNS domain used for generating the base DN
+* **ldap_top_organization** - the value of `o` attribute of the base path
+* **ldap_data_password** - password for administrator account of the data tree
+* **ldap_config_password** - password for administrator account of the config tree
+* **ldap_hold_package** - whether to hold slapd package against upgrades (default no)
+* **ldap_certificate_file** - path to TLS certificate
+* **ldap_certificate_key_file** - path to TLS private key
+* **ldap_certificate_chain_file** - path to TLS certificate chain
+* **ldap_access_rules_additional** - access rules to be added to the default rules (default empty list)
+* **ldap_size_limit** - limit for the number of returned records, default is unlimited
+* **ldap_master_replica** - whether to configure the server as master replica (default no)
+* **ldap_replication_password** - password for replication user
+* **ldap_slave_replica** - whether to configure the server as slave replica (default no)
+* **ldap_slave_tls_cacert** - path to TLS certificate of the CA that signed master replica's certificate
+* **ldap_master_url** - URL ot the master replica that the slave should connect to
+* **ldap_users** - list of users to create, keys user, password and description are required for each one
+* **ldap_memberOf_overlay** - whether to configure memberOf overlay for adding the attribute memberOf to group members (default no)
+* **ldap_strong_password_hashing** - whether to configure strong password hashing as the default hashing method (default no)
+
+## Examples
 
 Example of installing a master server for replication:
 ```yaml
@@ -20,10 +48,16 @@ Example of installing a master server for replication:
         ldap_certificate_chain_file: "/etc/letsencrypt/live/cloud6.perun-aai.org/chain.pem"
         ldap_master_replica: yes
         ldap_replication_password: "test"
+        ldap_memberOf_overlay: yes
         ldap_users:
           - user: proxy
             password: test
             description: "user for IdP Proxy"
+        ldap_access_rules_additional:
+          - >-
+            to dn.subtree="dc=cesnet,dc=cz"
+            by dn.exact="cn=proxy,dc=cesnet,dc=cz" read
+            by * break
 ```
 
 Example of installing a slave replica:
@@ -76,5 +110,6 @@ Example of installing a slave replica:
         ldap_replication_password: "test"
         ldap_slave_tls_cacert: '/etc/ldap/masterca.pem'
         ldap_master_url: 'ldaps://cloud6.perun-aai.org/'
+        ldap_memberOf_overlay: yes
 
 ```
