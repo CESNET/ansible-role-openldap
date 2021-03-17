@@ -6,14 +6,7 @@
       - ldap_data_admin_dn is defined
       - ldap_data_password is defined
 
-# SHA is used for idempotency, SSHA has different salt each time
-- name: "compute {{ user_entry.user }} password hash"
-  command:
-    argv: [ 'slappasswd', '-h', '{SHA}', '-s', "{{ user_entry.password }}" ]
-  register: ldap_user_entry_password_hash
-  changed_when: False
-  no_log: True
-
+# the entry is created only if it does not exist; existing entry is NOT modified
 - name: "create {{ user_entry.user }} user entry"
   ldap_entry:
     dn: "cn={{ user_entry.user }},{{ ldap_basedn }}"
@@ -22,7 +15,15 @@
       - organizationalRole
     attributes:
       description: "{{ user_entry.description }}"
-      userPassword: "{{ ldap_user_entry_password_hash.stdout }}"
+      userPassword: "**************"
     state: present
+    bind_dn: "{{ ldap_data_admin_dn }}"
+    bind_pw: "{{ ldap_data_password }}"
+
+# password is set only if it is different
+- name: "set password for {{ user_entry.user }}"
+  ldap_passwd:
+    dn: "cn={{ user_entry.user }},{{ ldap_basedn }}"
+    passwd: "{{ user_entry.password }}"
     bind_dn: "{{ ldap_data_admin_dn }}"
     bind_pw: "{{ ldap_data_password }}"

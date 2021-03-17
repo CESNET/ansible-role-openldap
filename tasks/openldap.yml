@@ -141,6 +141,47 @@
     state: restarted
   when: secure_port_enabled.changed or ssl_ldif.changed
 
+- name: "OpenLDAP modules"
+  block:
+    - name: "modules lists"
+      set_fact:
+        olcModuleLoad_values: [ 'back_mdb' ]
+        olcModuleLoad_master_replica: [ 'syncprov', 'accesslog' ]
+        olcModuleLoad_memberof: [ 'memberof', 'refint' ]
+        olcModuleLoad_argon2: [ 'pw-argon2' ]
+    - name: "modules for master replica"
+      when: ldap_master_replica
+      set_fact:
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_master_replica }}"
+    - name: "modules for memberOf overlay"
+      when: ldap_memberOf_overlay
+      set_fact:
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_memberof }}"
+    - name: "module pw-argon2"
+      when: ldap_strong_password_hashing
+      set_fact:
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_argon2 }}"
+    - name: "numbering olcModuleLoad values with their indexes"
+      set_fact:
+        olcModuleLoad_numbered_values: "{{ olcModuleLoad_numbered_values| default([]) +  [ ''.join(('{',idx|string,'}',item)) ] }}"
+      loop: "{{ olcModuleLoad_values }}"
+      loop_control:
+        index_var: idx
+    - name: "activate modules {{ olcModuleLoad_numbered_values }}"
+      ldap_attr:
+        dn: cn=module{0},cn=config
+        name: olcModuleLoad
+        values: "{{ olcModuleLoad_numbered_values }}"
+        state: present
+
+- name: "set strong hashing method as default for password hashing"
+  when: ldap_strong_password_hashing
+  ldap_attr:
+    dn: "olcDatabase={-1}frontend,cn=config"
+    name: olcPasswordHash
+    values: "{ARGON2}"
+    state: exact
+
 - name: "create users"
   include_tasks: user_entry.yml
   loop: "{{ ldap_users }}"
@@ -201,46 +242,6 @@
     values: "{{ ldap_size_limit }}"
     state: exact
 
-- name: "LDAP modules"
-  block:
-    - name: "modules lists"
-      set_fact:
-        olcModuleLoad_values: [ 'back_mdb' ]
-        olcModuleLoad_master_replica: [ 'syncprov', 'accesslog' ]
-        olcModuleLoad_memberof: [ 'memberof', 'refint' ]
-        olcModuleLoad_argon2: [ 'pw-argon2' ]
-    - name: "modules for master replica"
-      when: ldap_master_replica
-      set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_master_replica }}"
-    - name: "modules for memberOf overlay"
-      when: ldap_memberOf_overlay
-      set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_memberof }}"
-    - name: "module pw-argon2"
-      when: ldap_strong_password_hashing
-      set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_argon2 }}"
-    - name: "numbering olcModuleLoad values with their indexes"
-      set_fact:
-        olcModuleLoad_numbered_values: "{{ olcModuleLoad_numbered_values| default([]) +  [ ''.join(('{',idx|string,'}',item)) ] }}"
-      loop: "{{ olcModuleLoad_values }}"
-      loop_control:
-        index_var: idx
-    - name: "activate modules {{ olcModuleLoad_numbered_values }}"
-      ldap_attr:
-        dn: cn=module{0},cn=config
-        name: olcModuleLoad
-        values: "{{ olcModuleLoad_numbered_values }}"
-        state: present
-
-- name: "set strong hashing method as default for password hashing"
-  when: ldap_strong_password_hashing
-  ldap_attr:
-    dn: "olcDatabase={-1}frontend,cn=config"
-    name: olcPasswordHash
-    values: "{ARGON2}"
-    state: exact
 
 - name: "replication"
   when: ldap_master_replica
