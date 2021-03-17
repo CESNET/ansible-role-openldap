@@ -382,3 +382,28 @@
     attributes:
       olcMemberOfRefInt: "TRUE"
     state: present
+
+- name: "change the standard schema to allow empty groups"
+  when: ldap_allow_empty_groups
+  tags: hack
+  block:
+    - name: "copy core.ldif"
+      copy:
+        src: etc/ldap/schema/core.ldif
+        dest: /etc/ldap/schema/core.ldif
+      register: f1
+    - name: "copy core.schema"
+      copy:
+        src: etc/ldap/schema/core.schema
+        dest: /etc/ldap/schema/core.schema
+      register: f2
+    - name: "copy cn={0}core.ldif"
+      copy:
+        src: 'etc/ldap/slapd.d/cn=config/cn=schema/cn={0}core.ldif'
+        dest: '/etc/ldap/slapd.d/cn=config/cn=schema/cn={0}core.ldif'
+      register: f3
+    - name: "restart slapd"
+      when: f1.changed or f2.changed or f3.changed
+      service:
+        name: slapd
+        state: restarted

@@ -41,8 +41,11 @@ ldap_users: []
 # whether to configure memberOf overlay for adding the attribute memberOf to group members
 ldap_memberOf_overlay: no
 
-#whether to configure strong password hashing
+# whether to configure strong password hashing
 ldap_strong_password_hashing: no
+
+# whether to hack the standard schema to allow empty groups
+ldap_allow_empty_groups: no
 
 ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
 ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
