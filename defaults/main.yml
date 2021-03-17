@@ -31,7 +31,6 @@ ldap_size_limit: unlimited
 ldap_master_replica: no
 ldap_replication_password: 'test'
 ldap_slave_replica: no
-ldap_slave_tls_cacert: '/etc/ldap/masterca.pem'
 ldap_master_url: 'ldaps://ldap.example.org'
 #ldap_users:
 #  - user: proxy

@@ -57,6 +57,14 @@
       - ldap-utils
       - python-ldap
 
+# libldap-common is a dependency for python-apt so it is already installed in older version
+# and thus not upgraded by the previous step
+- name: "update libldap-common to latest version"
+  apt:
+    state: latest
+    default_release: "{{ ansible_distribution_release }}-backports"
+    name: libldap-common
+
 - name: "install slapd-contrib with Argon2 key derivation function"
   when: ldap_strong_password_hashing
   apt:
@@ -356,7 +364,6 @@
       bindmethod=simple
       binddn="cn=replication,{{ ldap_basedn }}"
       credentials={{ ldap_replication_password }}
-      tls_cacert={{ ldap_slave_tls_cacert }}
       logbase="cn=accesslog"
       logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
       syncdata=accesslog

@@ -22,7 +22,6 @@ Ansible role for installing OpenLDAP server on Debian. It supports:
 * **ldap_master_replica** - whether to configure the server as master replica (default no)
 * **ldap_replication_password** - password for replication user
 * **ldap_slave_replica** - whether to configure the server as slave replica (default no)
-* **ldap_slave_tls_cacert** - path to TLS certificate of the CA that signed master replica's certificate
 * **ldap_master_url** - URL ot the master replica that the slave should connect to
 * **ldap_users** - list of users to create, keys user, password and description are required for each one
 * **ldap_memberOf_overlay** - whether to configure memberOf overlay for adding the attribute memberOf to group members (default no)
@@ -108,7 +107,6 @@ Example of installing a slave replica:
         ldap_certificate_chain_file: "/etc/letsencrypt/live/cloud4.perun-aai.org/chain.pem"
         ldap_slave_replica: yes
         ldap_replication_password: "test"
-        ldap_slave_tls_cacert: '/etc/ldap/masterca.pem'
         ldap_master_url: 'ldaps://cloud6.perun-aai.org/'
         ldap_memberOf_overlay: yes
 
