@@ -374,7 +374,7 @@
 - name: "memberOf overlay"
   when: ldap_memberOf_overlay
   ldap_entry:
-    dn: "olcOverlay={{ '{' + overlays_counter + '}' }}memberof,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay={{ '{' + overlays_counter|string + '}' }}memberof,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
       - olcOverlayConfig
@@ -392,7 +392,7 @@
 - name: "refint overlay"
   when: ldap_memberOf_overlay
   ldap_entry:
-    dn: "olcOverlay={{ '{' + overlays_counter + '}' }}refint,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay={{ '{' + overlays_counter|string + '}' }}refint,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
       - olcOverlayConfig
@@ -410,7 +410,7 @@
 - name: "sssvlv overlay"
   when: ldap_sssvlv_overlay
   ldap_entry:
-    dn: "olcOverlay={{ '{' + overlays_counter + '}' }}sssvlv,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay={{ '{' + overlays_counter|string + '}' }}sssvlv,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
       - olcOverlayConfig
