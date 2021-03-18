@@ -148,6 +148,7 @@
         olcModuleLoad_values: [ 'back_mdb' ]
         olcModuleLoad_master_replica: [ 'syncprov', 'accesslog' ]
         olcModuleLoad_memberof: [ 'memberof', 'refint' ]
+        olcModuleLoad_sssvlv: [ 'sssvlv' ]
         olcModuleLoad_argon2: [ 'pw-argon2' ]
     - name: "modules for master replica"
       when: ldap_master_replica
@@ -157,6 +158,10 @@
       when: ldap_memberOf_overlay
       set_fact:
         olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_memberof }}"
+    - name: "module for sssvlv overlay"
+      when: ldap_sssvlv_overlay
+      set_fact:
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_sssvlv }}"
     - name: "module pw-argon2"
       when: ldap_strong_password_hashing
       set_fact:
@@ -242,6 +247,9 @@
     values: "{{ ldap_size_limit }}"
     state: exact
 
+- name: "overlays counter init"
+  set_fact:
+    overlays_counter: 0
 
 - name: "replication"
   when: ldap_master_replica
@@ -293,7 +301,7 @@
           olcDbMaxsize: 85899345920
         state: present
 
-    - name: "accesslog overlay"
+    - name: "accesslog overlay for main database"
       ldap_entry:
         dn: "olcOverlay={0}accesslog,olcDatabase={1}mdb,cn=config"
         objectClass:
@@ -306,7 +314,7 @@
           olcAccessLogPurge: '2+00:00 1+00:00'
         state: present
 
-    - name: "syncprov provider for main database"
+    - name: "syncprov overlay for main database"
       ldap_entry:
         dn: "olcOverlay={1}syncprov,olcDatabase={1}mdb,cn=config"
         objectClass:
@@ -316,7 +324,11 @@
           olcSpCheckpoint: '100 10'
         state: present
 
-    - name: "syncprov provider for accesslog"
+    - name: "overlays counter +2"
+      set_fact:
+        overlays_counter: "{{ overlays_counter|int + 2 }}"
+
+    - name: "syncprov overlay for accesslog database"
       ldap_entry:
         dn: "olcOverlay={0}syncprov,olcDatabase={2}mdb,cn=config"
         objectClass:
@@ -328,18 +340,6 @@
           olcSpReloadHint: 'TRUE'
         state: present
 
-    - name: "memberOf provider for main database when master replica"
-      when: ldap_memberOf_overlay
-      ldap_entry:
-        dn: "olcOverlay={2}memberof,olcDatabase={1}mdb,cn=config"
-        objectClass:
-          - olcConfig
-          - olcMemberOf
-          - olcOverlayConfig
-          - top
-        attributes:
-          olcMemberOfRefInt: "TRUE"
-        state: present
 
 - name: "create ou=People branch"
   when: not ldap_slave_replica
@@ -370,18 +370,57 @@
       syncdata=accesslog
     state: exact
 
-- name: "memberOf provider for main database when not master replica"
-  when: ldap_memberOf_overlay and not ldap_master_replica
+# overlays need to have index in their names, but the index depend on their number
+- name: "memberOf overlay"
+  when: ldap_memberOf_overlay
   ldap_entry:
-    dn: "olcOverlay={0}memberof,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay={{ '{' + overlays_counter + '}' }}memberof,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
-      - olcMemberOf
       - olcOverlayConfig
+      - olcMemberOf
       - top
     attributes:
       olcMemberOfRefInt: "TRUE"
     state: present
+
+- name: "overlays counter +1"
+  when: ldap_memberOf_overlay
+  set_fact:
+    overlays_counter: "{{ overlays_counter|int + 1 }}"
+
+- name: "refint overlay"
+  when: ldap_memberOf_overlay
+  ldap_entry:
+    dn: "olcOverlay={{ '{' + overlays_counter + '}' }}refint,olcDatabase={1}mdb,cn=config"
+    objectClass:
+      - olcConfig
+      - olcOverlayConfig
+      - olcRefintConfig
+      - top
+    attributes:
+      olcRefintAttribute: "memberof member manager owner"
+    state: present
+
+- name: "overlays counter +1"
+  when: ldap_memberOf_overlay
+  set_fact:
+    overlays_counter: "{{ overlays_counter|int + 1 }}"
+
+- name: "sssvlv overlay"
+  when: ldap_sssvlv_overlay
+  ldap_entry:
+    dn: "olcOverlay={{ '{' + overlays_counter + '}' }}sssvlv,olcDatabase={1}mdb,cn=config"
+    objectClass:
+      - olcConfig
+      - olcOverlayConfig
+      - top
+    state: present
+
+#- name: "overlays counter +1"
+#  when: ldap_sssvlv_overlay
+#  set_fact:
+#    overlays_counter: "{{ overlays_counter|int + 1 }}"
 
 - name: "change the standard schema to allow empty groups"
   when: ldap_allow_empty_groups

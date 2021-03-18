@@ -24,8 +24,12 @@ Ansible role for installing OpenLDAP server on Debian. It supports:
 * **ldap_slave_replica** - whether to configure the server as slave replica (default no)
 * **ldap_master_url** - URL ot the master replica that the slave should connect to
 * **ldap_users** - list of users to create, keys user, password and description are required for each one
-* **ldap_memberOf_overlay** - whether to configure memberOf overlay for adding the attribute memberOf to group members (default no)
+* **ldap_memberOf_overlay** - whether to configure memberOf overlay for adding the attribute memberOf to group members and refint overlay for keeping consistency (default no)
+* **ldap_sssvlv_overlay** - whether to add Server Side Sorting and Virtual List View overlay (default no)
+* **ldap_allow_empty_groups** - whether to modify core schema to allow empty groups (default no)
 * **ldap_strong_password_hashing** - whether to configure strong password hashing as the default hashing method (default no)
+
+For midPoint, set ldap_memberOf_overlay, ldap_sssvlv_overlay and ldap_allow_empty_groups to yes.
 
 ## Examples
 
@@ -48,6 +52,8 @@ Example of installing a master server for replication:
         ldap_master_replica: yes
         ldap_replication_password: "test"
         ldap_memberOf_overlay: yes
+        ldap_sssvlv_overlay: yes
+        ldap_allow_empty_groups: yes
         ldap_users:
           - user: proxy
             password: test
