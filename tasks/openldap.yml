@@ -65,6 +65,15 @@
     default_release: "{{ ansible_distribution_release }}-backports"
     name: libldap-common
 
+- name: "make sure the /etc/ldap/ldap.conf file exists (it is part of package libldap-common)"
+  template:
+    backup: true
+    src: ldap.conf.j2
+    dest: /etc/ldap/ldap.conf
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: "install slapd-contrib with Argon2 key derivation function"
   when: ldap_strong_password_hashing
   apt:
