@@ -169,11 +169,11 @@
         path: /etc/default/saslauthd
         regexp: 'START='
         line: 'START=yes'
-    - name: "saslauthd MECHANISM=kerberos5"
+    - name: "saslauthd MECHANISMS=kerberos5"
       lineinfile:
         path: /etc/default/saslauthd
-        regexp: 'MECHANISM='
-        line: 'MECHANISM="kerberos5"'
+        regexp: 'MECHANISMS='
+        line: 'MECHANISMS="kerberos5"'
     - name: "start saslauthd"
       service:
         name: saslauthd
