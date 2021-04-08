@@ -150,6 +150,52 @@
     state: restarted
   when: secure_port_enabled.changed or ssl_ldif.changed
 
+- name: "pass-through authentication"
+  when: ldap_pass_through_authentication
+  block:
+    - name: "install kerberos and sasl"
+      apt:
+        name:
+          - krb5-user
+          - sasl2-bin
+        state: present
+    - name: "krb5.conf"
+      get_url:
+        url: https://metavo.metacentrum.cz/krb5.conf
+        dest: /etc/krb5.conf
+        force: yes
+    - name: "saslauthd START=yes"
+      lineinfile:
+        path: /etc/default/saslauthd
+        regexp: 'START='
+        line: 'START=yes'
+    - name: "saslauthd MECHANISM=kerberos5"
+      lineinfile:
+        path: /etc/default/saslauthd
+        regexp: 'MECHANISM='
+        line: 'MECHANISM="kerberos5"'
+    - name: "start saslauthd"
+      service:
+        name: saslauthd
+        state: started
+    - name: "sasl2 config"
+      copy:
+        dest: /usr/lib/sasl2/slapd.conf
+        content: |
+          pwcheck_method: saslauthd
+          mech_list: plain login external
+      register: sasl_first_pass
+    - name: "add user openldap to group sasl"
+      user:
+        name: openldap
+        groups: sasl
+        append: yes
+    - name: "restart OpenLDAP after enabling SASL"
+      service:
+        name: slapd
+        state: restarted
+      when: sasl_first_pass.changed
+
 - name: "OpenLDAP modules"
   block:
     - name: "modules lists"
@@ -377,6 +423,7 @@
       logbase="cn=accesslog"
       logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
       syncdata=accesslog
+      tls_cacert=/etc/ssl/certs/ca-certificates.crt
     state: exact
 
 # overlays need to have index in their names, but the index depend on their number

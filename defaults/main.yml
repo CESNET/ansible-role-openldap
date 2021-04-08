@@ -50,5 +50,8 @@ ldap_allow_empty_groups: no
 # whether to install Server Side Sorting and Virtual List View overlay
 ldap_sssvlv_overlay: no
 
+# whether to install GSSAPI pass-through authentication
+ldap_pass_through_authentication: no
+
 ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
 ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
