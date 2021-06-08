@@ -55,7 +55,7 @@
     name:
       - slapd
       - ldap-utils
-      - python-ldap
+      - python3-ldap
 
 # libldap-common is a dependency for python-apt so it is already installed in older version
 # and thus not upgraded by the previous step
