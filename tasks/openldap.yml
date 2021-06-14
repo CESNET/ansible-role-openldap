@@ -1,3 +1,17 @@
+- name:  "Ansible 2.11+ required"
+  assert:
+    that:
+      - ansible_version is defined
+      - ansible_version.full is version_compare('2.11', '>=')
+    msg: "Required Ansible version is 4 with 2.11+ (core)"
+
+- name: "Debian 10 required"
+  assert:
+    that:
+      - ansible_distribution == "Debian"
+      - ansible_distribution_major_version in [ "10" ]
+    msg: "Only Debian 10 is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
+
 - name: "compute base DN"
   set_fact:
     ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
@@ -96,10 +110,10 @@
   no_log: True
 
 - name: "set config admin password"
-  ldap_attr:
+  ldap_attrs:
     dn: olcDatabase={0}config,cn=config
-    name: olcRootPW
-    values: "{{ ldap_config_admin_password_hash.stdout }}"
+    attributes:
+      olcRootPW: "{{ ldap_config_admin_password_hash.stdout }}"
     state: exact
   no_log: True
 
@@ -116,26 +130,15 @@
     state: restarted
   when: openldap_ssl_cert_group.changed
 
-- name: "create file for modifying LDAP TLS settings"
-  copy:
-    dest: "/etc/ldap/ssl.ldif"
-    content: |
-      dn: cn=config
-      changetype: modify
-      replace: olcTLSCertificateFile
-      olcTLSCertificateFile: {{ ldap_certificate_file }}
-      -
-      replace: olcTLSCertificateKeyFile
-      olcTLSCertificateKeyFile: {{ ldap_certificate_key_file }}
-      -
-      replace: olcTLSCACertificateFile
-      olcTLSCACertificateFile: {{ ldap_certificate_chain_file }}
-      -
+- name: "modify LDAP TLS settings"
+  ldap_attrs:
+    dn: cn=config
+    attributes:
+      olcTLSCertificateFile: "{{ ldap_certificate_file }}"
+      olcTLSCertificateKeyFile: "{{ ldap_certificate_key_file }}"
+      olcTLSCACertificateFile: "{{ ldap_certificate_chain_file }}"
+    state: exact
   register: ssl_ldif
-
-- name: "change OpenLDAP TLS settings"
-  command: /usr/bin/ldapmodify -Q -H ldapi:/// -Y EXTERNAL -f /etc/ldap/ssl.ldif
-  when: ssl_ldif.changed
 
 - name: "enable secure port, plain ldap and local connection"
   lineinfile:
@@ -221,25 +224,20 @@
       when: ldap_strong_password_hashing
       set_fact:
         olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_argon2 }}"
-    - name: "numbering olcModuleLoad values with their indexes"
-      set_fact:
-        olcModuleLoad_numbered_values: "{{ olcModuleLoad_numbered_values| default([]) +  [ ''.join(('{',idx|string,'}',item)) ] }}"
-      loop: "{{ olcModuleLoad_values }}"
-      loop_control:
-        index_var: idx
-    - name: "activate modules {{ olcModuleLoad_numbered_values }}"
-      ldap_attr:
+    - name: "activate modules {{ olcModuleLoad_values }}"
+      ldap_attrs:
         dn: cn=module{0},cn=config
-        name: olcModuleLoad
-        values: "{{ olcModuleLoad_numbered_values }}"
+        attributes:
+          olcModuleLoad: "{{ olcModuleLoad_values }}"
+        ordered: yes
         state: present
 
 - name: "set strong hashing method as default for password hashing"
   when: ldap_strong_password_hashing
-  ldap_attr:
+  ldap_attrs:
     dn: "olcDatabase={-1}frontend,cn=config"
-    name: olcPasswordHash
-    values: "{ARGON2}"
+    attributes:
+      olcPasswordHash: "{ARGON2}"
     state: exact
 
 - name: "create users"
@@ -280,26 +278,19 @@
     - name: "LDAP access rules end"
       set_fact:
         olcAccess_values: "{{ olcAccess_values + ldap_access_rules_end }}"
-    - name: "numbering olcAcccess values with their indexes"
-      set_fact:
-        olcAccess_numbered_values: "{{ olcAccess_numbered_values| default([]) +  [ ''.join(('{',idx|string,'}',item)) ] }}"
-      loop: "{{ olcAccess_values }}"
-      loop_control:
-        index_var: idx
-    - debug:
-        var: olcAccess_numbered_values
     - name: "modify OpenLDAP access rights"
-      ldap_attr:
+      ldap_attrs:
         dn: olcDatabase={1}mdb,cn=config
-        name: olcAccess
-        values: "{{ olcAccess_numbered_values }}"
+        attributes:
+          olcAccess: "{{ olcAccess_values }}"
+        ordered: yes
         state: exact
 
 - name: "set unlimited size of searches"
-  ldap_attr:
+  ldap_attrs:
     dn: olcDatabase={-1}frontend,cn=config
-    name: olcSizeLimit
-    values: "{{ ldap_size_limit }}"
+    attributes:
+      olcSizeLimit: "{{ ldap_size_limit }}"
     state: exact
 
 - name: "overlays counter init"
@@ -310,11 +301,12 @@
   when: ldap_master_replica
   block:
     - name: "no limits for replica"
-      ldap_attr:
+      ldap_attrs:
         dn: olcDatabase={1}mdb,cn=config
-        name: olcLimits
-        values:
-          - '{0}dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
+        attributes:
+          olcLimits:
+            - 'dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
+        ordered: yes
         state: exact
 
     - name: "directory for accesslog"
@@ -407,23 +399,24 @@
 
 - name: "replication on slave"
   when: ldap_slave_replica
-  ldap_attr:
+  ldap_attrs:
     dn: "olcDatabase={1}mdb,cn=config"
-    name: olcSyncrepl
-    values: >-
-      {0}provider={{ ldap_master_url }}
-      type=refreshAndPersist
-      rid=0
-      retry="5 5 300 +"
-      searchbase="{{ ldap_basedn }}"
-      attrs="*,+"
-      bindmethod=simple
-      binddn="cn=replication,{{ ldap_basedn }}"
-      credentials={{ ldap_replication_password }}
-      logbase="cn=accesslog"
-      logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
-      syncdata=accesslog
-      tls_cacert=/etc/ssl/certs/ca-certificates.crt
+    attributes:
+      olcSyncrepl: >-
+        provider={{ ldap_master_url }}
+        type=refreshAndPersist
+        rid=0
+        retry="5 5 300 +"
+        searchbase="{{ ldap_basedn }}"
+        attrs="*,+"
+        bindmethod=simple
+        binddn="cn=replication,{{ ldap_basedn }}"
+        credentials={{ ldap_replication_password }}
+        logbase="cn=accesslog"
+        logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
+        syncdata=accesslog
+        tls_cacert=/etc/ssl/certs/ca-certificates.crt
+    ordered: yes
     state: exact
 
 # overlays need to have index in their names, but the index depend on their number
