@@ -5,12 +5,12 @@
       - ansible_version.full is version_compare('2.11', '>=')
     msg: "Required Ansible version is 4 with 2.11+ (core)"
 
-- name: "Debian 10 required"
+- name: "Debian 10/11 required"
   assert:
     that:
       - ansible_distribution == "Debian"
-      - ansible_distribution_major_version in [ "10" ]
-    msg: "Only Debian 10 is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
+      - ansible_distribution_major_version in [ "10", "11" ]
+    msg: "Only Debian 10/11 is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
 
 - name: "compute base DN"
   set_fact:
