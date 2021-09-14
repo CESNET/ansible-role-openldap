@@ -17,6 +17,7 @@ Ansible role for installing OpenLDAP server on Debian. It supports:
 * **ldap_certificate_file** - path to TLS certificate
 * **ldap_certificate_key_file** - path to TLS private key
 * **ldap_certificate_chain_file** - path to TLS certificate chain
+* **ldap_access_rules_set** - whether to set ACL, default is yes, may be set to "no" if ACL contains attributes not yet defined
 * **ldap_access_rules_additional** - access rules to be added to the default rules (default empty list)
 * **ldap_size_limit** - limit for the number of returned records, default is unlimited
 * **ldap_master_replica** - whether to configure the server as master replica (default no)

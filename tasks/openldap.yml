@@ -256,6 +256,7 @@
       description: "user for LDAP replication"
 
 - name: "LDAP access rules"
+  when: ldap_access_rules_set
   block:
     - name: "LDAP access rules empty"
       set_fact:

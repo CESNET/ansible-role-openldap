@@ -6,6 +6,7 @@ ldap_hold_package: no
 ldap_certificate_file: '/etc/ldap/cert.pem'
 ldap_certificate_key_file: '/etc/ldap/privkey.pem'
 ldap_certificate_chain_file: '/etc/ldap/chain.pem'
+ldap_access_rules_set: yes
 ldap_access_rules_start:
   # value are in YAML folded style (newlines are replaced with spaces) with chomping (no newline at the end)
   - >-
