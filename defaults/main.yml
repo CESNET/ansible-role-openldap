@@ -56,3 +56,7 @@ ldap_pass_through_authentication: no
 
 ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
 ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
+
+# maximum size of database (object olcDatabase={1}mdb,cn=config attribute olcDbMaxSize) in bytes
+# default is 1 GiB
+ldap_mdb1_olcDbMaxSize: 1073741824
