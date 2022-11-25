@@ -88,8 +88,33 @@
     group: root
     mode: '0644'
 
+- name: "get package facts"
+  package_facts:
+    manager: "apt"
+- name: "detect slapd package version"
+  set_fact:
+    slapd_24: >-
+      {{ ansible_facts.packages['slapd'][0].version is version('2.4', '>=')
+      and ansible_facts.packages['slapd'][0].version is version('2.5', '<') }}
+- name: "decide argon2 module name (different in 2.4 and 2.5 versions)"
+  set_fact:
+    argon2_module_name: "{{ 'pw-argon2' if slapd_24 else 'argon2' }}"
+    default_hash: "{{ '{ARGON2}' if ldap_strong_password_hashing else '{SHA}' }}"
+- name: "decide parameters for slappasswd"
+  set_fact:
+    slappasswd_argv: >
+      {{ [ 'slappasswd', '-h', default_hash ] +
+         ( [ '-o', 'module-load=/usr/lib/ldap/'+argon2_module_name+'.so' ] if  ldap_strong_password_hashing else [] )
+      }}
+- debug:
+    msg: >-
+      slapd version: {{ ansible_facts.packages['slapd'][0].version }}
+      slapd_24: {{ slapd_24 }}
+      argon2 module: {{ argon2_module_name }}
+      slappasswd_argv: {{ slappasswd_argv }}
+
 - name: "install slapd-contrib with Argon2 key derivation function"
-  when: ldap_strong_password_hashing
+  when: ldap_strong_password_hashing and slapd_24
   apt:
     default_release: "{{ ansible_distribution_release }}-backports"
     name: slapd-contrib
@@ -101,10 +126,9 @@
     name: slapd
     selection: hold
 
-# SHA is used for idempotency, SSHA has different salt each time
-- name: "compute config admin password hash"
+- name: "compute config admin password hash (not idempotent for salted hashes)"
   command:
-    argv: [ 'slappasswd', '-h', '{SHA}', '-s', "{{ ldap_config_password }}" ]
+    argv: "{{ slappasswd_argv + [ '-s', ldap_config_password ] }}"
   register: ldap_config_admin_password_hash
   changed_when: False
   no_log: True
@@ -114,6 +138,23 @@
     dn: olcDatabase={0}config,cn=config
     attributes:
       olcRootPW: "{{ ldap_config_admin_password_hash.stdout }}"
+    state: exact
+  no_log: True
+
+- name: "compute data admin password hash (not idempotent for salted hashes)"
+  when: ldap_strong_password_hashing
+  command:
+    argv: "{{ slappasswd_argv + [ '-s', ldap_data_password ] }}"
+  register: ldap_data_admin_password_hash
+  changed_when: False
+  no_log: True
+
+- name: "set data admin password"
+  when: ldap_strong_password_hashing
+  ldap_attrs:
+    dn: olcDatabase={1}mdb,cn=config
+    attributes:
+      olcRootPW: "{{ ldap_data_admin_password_hash.stdout }}"
     state: exact
   no_log: True
 
@@ -215,26 +256,22 @@
     - name: "modules lists"
       set_fact:
         olcModuleLoad_values: [ 'back_mdb' ]
-        olcModuleLoad_master_replica: [ 'syncprov', 'accesslog' ]
-        olcModuleLoad_memberof: [ 'memberof', 'refint' ]
-        olcModuleLoad_sssvlv: [ 'sssvlv' ]
-        olcModuleLoad_argon2: [ 'pw-argon2' ]
     - name: "modules for master replica"
       when: ldap_master_replica
       set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_master_replica }}"
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  [ 'syncprov', 'accesslog' ] }}"
     - name: "modules for memberOf overlay"
       when: ldap_memberOf_overlay
       set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_memberof }}"
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  [ 'memberof', 'refint' ] }}"
     - name: "module for sssvlv overlay"
       when: ldap_sssvlv_overlay
       set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_sssvlv }}"
-    - name: "module pw-argon2"
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  [ 'sssvlv' ] }}"
+    - name: "module argon2"
       when: ldap_strong_password_hashing
       set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  olcModuleLoad_argon2 }}"
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  [ argon2_module_name ] }}"
     - name: "activate modules {{ olcModuleLoad_values }}"
       ldap_attrs:
         dn: cn=module{0},cn=config
@@ -327,7 +364,7 @@
         state: directory
         owner: openldap
         group: openldap
-        mode: '0755'
+        mode: '0700'
 
     - name: "accesslog database"
       ldap_entry:
