@@ -366,36 +366,77 @@
         group: openldap
         mode: '0700'
 
-    - name: "accesslog database"
-      ldap_entry:
+#    - name: "accesslog database"
+#      ldap_entry:
+#        dn: "olcDatabase={2}mdb,cn=config"
+#        objectClass:
+#          - olcDatabaseConfig
+#          - olcMdbConfig
+#        attributes:
+#          olcDatabase: '{2}mdb'
+#          olcDbDirectory: /var/lib/ldap/accesslog
+#          olcSuffix: cn=accesslog
+#          olcAccess: '{0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read'
+#          olcLastMod: 'TRUE'
+#          olcMaxDerefDepth: 15
+#          olcReadOnly: 'FALSE'
+#          olcLimits: 'dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
+#          olcSizeLimit: unlimited
+#          olcTimeLimit: unlimited
+#          olcMonitoring: 'TRUE'
+#          olcDbCheckpoint: '0 0'
+#          olcDbIndex:
+#            - entryCSN eq
+#            - objectClass eq
+#            - reqEnd eq
+#            - reqResult eq
+#            - reqStart eq
+#            - reqDN eq
+#          olcDbMode: '0600'
+#          olcDbSearchStack: 16
+#          olcDbMaxsize: 85899345920
+#        state: present
+
+    # workaround for https://github.com/ansible-collections/community.general/issues/6045
+    - name: "detect accesslog database entry"
+      community.general.ldap_search:
         dn: "olcDatabase={2}mdb,cn=config"
-        objectClass:
-          - olcDatabaseConfig
-          - olcMdbConfig
-        attributes:
-          olcDatabase: '{2}mdb'
+        scope: base
+      register: acclog
+      ignore_errors: yes
+    - name: "create LDIF for accesslog database"
+      when: acclog.failed
+      copy:
+        dest: /etc/ldap/accesslogdb.ldif
+        content: |
+          dn: olcDatabase={2}mdb,cn=config
+          changetype: add
+          objectClass: olcDatabaseConfig
+          objectClass: olcMdbConfig
+          olcDatabase: {2}mdb
           olcDbDirectory: /var/lib/ldap/accesslog
           olcSuffix: cn=accesslog
-          olcAccess: '{0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read'
-          olcLastMod: 'TRUE'
+          olcAccess: {0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read
+          olcLastMod: TRUE
+          olcLimits: {0}dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited
           olcMaxDerefDepth: 15
-          olcReadOnly: 'FALSE'
-          olcLimits: 'dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
+          olcReadOnly: FALSE
           olcSizeLimit: unlimited
           olcTimeLimit: unlimited
-          olcMonitoring: 'TRUE'
-          olcDbCheckpoint: '0 0'
-          olcDbIndex:
-            - entryCSN eq
-            - objectClass eq
-            - reqEnd eq
-            - reqResult eq
-            - reqStart eq
-            - reqDN eq
-          olcDbMode: '0600'
+          olcMonitoring: TRUE
+          olcDbCheckpoint: 0 0
+          olcDbIndex: entryCSN eq
+          olcDbIndex: objectClass eq
+          olcDbIndex: reqEnd eq
+          olcDbIndex: reqResult eq
+          olcDbIndex: reqStart eq
+          olcDbIndex: reqDN eq
+          olcDbMaxSize: 85899345920
+          olcDbMode: 0600
           olcDbSearchStack: 16
-          olcDbMaxsize: 85899345920
-        state: present
+    - name: "create accesslog database using ldapadd"
+      when: acclog.failed
+      command: "/usr/bin/ldapadd -Q -H ldapi:/// -Y EXTERNAL -f /etc/ldap/accesslogdb.ldif"
 
     - name: "accesslog overlay for main database"
       ldap_entry:
