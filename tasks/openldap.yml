@@ -569,7 +569,7 @@
               dn: olcDatabase={0}config,cn=config
               changetype: modify
               add: olcSyncrepl
-              olcSyncrepl: rid=002 provider={{ ldap_master_url }} type=refreshAndPersist retry="5 5 300 +" searchbase="cn=schema,cn=config" bindmethod=simple binddn="cn=replication,{{ ldap_basedn }}" credentials=test tls_cacert=/etc/ssl/certs/ca-certificates.crt
+              olcSyncrepl: rid=002 provider={{ ldap_master_url }} type=refreshAndPersist retry="5 5 300 +" searchbase="cn=schema,cn=config" bindmethod=simple binddn="cn=replication,{{ ldap_basedn }}" credentials={{ ldap_replication_password }} tls_cacert=/etc/ssl/certs/ca-certificates.crt
               -
               add: olcMultiprovider
               olcMultiprovider: TRUE
