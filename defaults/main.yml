@@ -32,7 +32,7 @@ ldap_size_limit: unlimited
 ldap_master_replica: no
 ldap_replication_password: 'test'
 ldap_slave_replica: no
-ldap_master_url: 'ldaps://ldap.example.org'
+ldap_master_url: "ldaps://{{ inventory_hostname }}"
 #ldap_users:
 #  - user: proxy
 #    password: test

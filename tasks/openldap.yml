@@ -1,9 +1,9 @@
-- name:  "Ansible 2.11+ required"
+- name:  "Ansible 2.14+ required"
   assert:
     that:
       - ansible_version is defined
-      - ansible_version.full is version_compare('2.11', '>=')
-    msg: "Required Ansible version is 4 with 2.11+ (core)"
+      - ansible_version.full is version_compare('2.14', '>=')
+    msg: "Required Ansible version is 7 with 2.14+ (core)"
 
 - name: "Debian 10/11 required"
   assert:
@@ -342,11 +342,7 @@
       olcSizeLimit: "{{ ldap_size_limit }}"
     state: exact
 
-- name: "overlays counter init"
-  set_fact:
-    overlays_counter: 0
-
-- name: "replication"
+- name: "master replica"
   when: ldap_master_replica
   block:
     - name: "no limits for replica"
@@ -365,37 +361,6 @@
         owner: openldap
         group: openldap
         mode: '0700'
-
-#    - name: "accesslog database"
-#      ldap_entry:
-#        dn: "olcDatabase={2}mdb,cn=config"
-#        objectClass:
-#          - olcDatabaseConfig
-#          - olcMdbConfig
-#        attributes:
-#          olcDatabase: '{2}mdb'
-#          olcDbDirectory: /var/lib/ldap/accesslog
-#          olcSuffix: cn=accesslog
-#          olcAccess: '{0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read'
-#          olcLastMod: 'TRUE'
-#          olcMaxDerefDepth: 15
-#          olcReadOnly: 'FALSE'
-#          olcLimits: 'dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
-#          olcSizeLimit: unlimited
-#          olcTimeLimit: unlimited
-#          olcMonitoring: 'TRUE'
-#          olcDbCheckpoint: '0 0'
-#          olcDbIndex:
-#            - entryCSN eq
-#            - objectClass eq
-#            - reqEnd eq
-#            - reqResult eq
-#            - reqStart eq
-#            - reqDN eq
-#          olcDbMode: '0600'
-#          olcDbSearchStack: 16
-#          olcDbMaxsize: 85899345920
-#        state: present
 
     # workaround for https://github.com/ansible-collections/community.general/issues/6045
     - name: "detect accesslog database entry"
@@ -440,11 +405,11 @@
 
     - name: "accesslog overlay for main database"
       ldap_entry:
-        dn: "olcOverlay={0}accesslog,olcDatabase={1}mdb,cn=config"
+        dn: "olcOverlay=accesslog,olcDatabase={1}mdb,cn=config"
         objectClass:
           - olcAccessLogConfig
         attributes:
-          olcOverlay: '{0}accesslog'
+          olcOverlay: 'accesslog'
           olcAccessLogDb: cn=accesslog
           olcAccessLogOps: writes
           olcAccessLogSuccess: 'TRUE'
@@ -453,30 +418,44 @@
 
     - name: "syncprov overlay for main database"
       ldap_entry:
-        dn: "olcOverlay={1}syncprov,olcDatabase={1}mdb,cn=config"
+        dn: "olcOverlay=syncprov,olcDatabase={1}mdb,cn=config"
         objectClass:
           - olcSyncProvConfig
         attributes:
-          olcOverlay: '{1}syncprov'
+          olcOverlay: 'syncprov'
           olcSpCheckpoint: '100 10'
         state: present
 
-    - name: "overlays counter +2"
-      set_fact:
-        overlays_counter: "{{ overlays_counter|int + 2 }}"
-
     - name: "syncprov overlay for accesslog database"
       ldap_entry:
-        dn: "olcOverlay={0}syncprov,olcDatabase={2}mdb,cn=config"
+        dn: "olcOverlay=syncprov,olcDatabase={2}mdb,cn=config"
         objectClass:
           - olcSyncProvConfig
         attributes:
-          olcOverlay: '{0}syncprov'
+          olcOverlay: 'syncprov'
           olcSpCheckpoint: '100 10'
           olcSpNoPresent: 'TRUE'
           olcSpReloadHint: 'TRUE'
         state: present
 
+    - name: "syncprov overlay for config database"
+      ldap_entry:
+        dn: "olcOverlay=syncprov,olcDatabase={0}config,cn=config"
+        objectClass:
+          - olcSyncProvConfig
+        attributes:
+          olcOverlay: 'syncprov'
+        state: present
+
+    - name: "modify ACL for config db to allow replication to read schemas"
+      ldap_attrs:
+        dn: olcDatabase={0}config,cn=config
+        attributes:
+          olcAccess: >-
+            {0}to dn.subtree="cn=schema,cn=config" 
+            by dn.exact="cn=replication,{{ ldap_basedn }}" read
+            by * break
+        state: present
 
 - name: "create ou=People branch"
   when: not ldap_slave_replica
@@ -487,33 +466,11 @@
     bind_dn: "{{ ldap_data_admin_dn }}"
     bind_pw: "{{ ldap_data_password }}"
 
-- name: "replication on slave"
-  when: ldap_slave_replica
-  ldap_attrs:
-    dn: "olcDatabase={1}mdb,cn=config"
-    attributes:
-      olcSyncrepl: >-
-        provider={{ ldap_master_url }}
-        type=refreshAndPersist
-        rid=0
-        retry="5 5 300 +"
-        searchbase="{{ ldap_basedn }}"
-        attrs="*,+"
-        bindmethod=simple
-        binddn="cn=replication,{{ ldap_basedn }}"
-        credentials={{ ldap_replication_password }}
-        logbase="cn=accesslog"
-        logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
-        syncdata=accesslog
-        tls_cacert=/etc/ssl/certs/ca-certificates.crt
-    ordered: yes
-    state: exact
-
 # overlays need to have index in their names, but the index depend on their number
 - name: "memberOf overlay"
   when: ldap_memberOf_overlay
   ldap_entry:
-    dn: "olcOverlay={{ '{' + overlays_counter|string + '}' }}memberof,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay=memberof,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
       - olcOverlayConfig
@@ -523,15 +480,10 @@
       olcMemberOfRefInt: "TRUE"
     state: present
 
-- name: "overlays counter +1"
-  when: ldap_memberOf_overlay
-  set_fact:
-    overlays_counter: "{{ overlays_counter|int + 1 }}"
-
 - name: "refint overlay"
   when: ldap_memberOf_overlay
   ldap_entry:
-    dn: "olcOverlay={{ '{' + overlays_counter|string + '}' }}refint,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay=refint,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
       - olcOverlayConfig
@@ -541,25 +493,15 @@
       olcRefintAttribute: "memberof member manager owner"
     state: present
 
-- name: "overlays counter +1"
-  when: ldap_memberOf_overlay
-  set_fact:
-    overlays_counter: "{{ overlays_counter|int + 1 }}"
-
 - name: "sssvlv overlay"
   when: ldap_sssvlv_overlay
   ldap_entry:
-    dn: "olcOverlay={{ '{' + overlays_counter|string + '}' }}sssvlv,olcDatabase={1}mdb,cn=config"
+    dn: "olcOverlay=sssvlv,olcDatabase={1}mdb,cn=config"
     objectClass:
       - olcConfig
       - olcOverlayConfig
       - top
     state: present
-
-#- name: "overlays counter +1"
-#  when: ldap_sssvlv_overlay
-#  set_fact:
-#    overlays_counter: "{{ overlays_counter|int + 1 }}"
 
 - name: "change the standard schema to allow empty groups"
   when: ldap_allow_empty_groups
@@ -585,3 +527,51 @@
       service:
         name: slapd
         state: restarted
+
+- name: "slave replica"
+  when: ldap_slave_replica
+  block:
+    # see https://www.openldap.org/doc/admin25/slapdconf2.html#olcSyncrepl for replication parameters
+    - name: "data replication"
+      ldap_attrs:
+        dn: "olcDatabase={1}mdb,cn=config"
+        attributes:
+          olcSyncrepl: >-
+            rid=001
+            provider={{ ldap_master_url }}
+            type=refreshAndPersist
+            retry="5 5 300 +"
+            searchbase="{{ ldap_basedn }}"
+            schemachecking=off
+            bindmethod=simple
+            binddn="cn=replication,{{ ldap_basedn }}"
+            credentials={{ ldap_replication_password }}
+            tls_cacert=/etc/ssl/certs/ca-certificates.crt
+            logbase="cn=accesslog"
+            logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
+            syncdata=accesslog
+          olcUpdateRef: "{{ ldap_master_url }}"
+        ordered: yes
+        state: exact
+
+    - name: "check existence of schema replication"
+      community.general.ldap_search:
+        dn: "olcDatabase={0}config,cn=config"
+        scope: base
+      register: configdb
+    - name: "set schema replication"
+      when: "'olcSyncrepl' not in configdb.results[0]"
+      block:
+        - name: "create LDIF for setting schema replication"
+          copy:
+            dest: /etc/ldap/schema_sync.ldif
+            content: |
+              dn: olcDatabase={0}config,cn=config
+              changetype: modify
+              add: olcSyncrepl
+              olcSyncrepl: rid=002 provider={{ ldap_master_url }} type=refreshAndPersist retry="5 5 300 +" searchbase="cn=schema,cn=config" bindmethod=simple binddn="cn=replication,{{ ldap_basedn }}" credentials=test tls_cacert=/etc/ssl/certs/ca-certificates.crt
+              -
+              add: olcMultiprovider
+              olcMultiprovider: TRUE
+        - name: "load LDIF for setting schema replication"
+          command: "/usr/bin/ldapmodify -Q -H ldapi:/// -Y EXTERNAL -f /etc/ldap/schema_sync.ldif"
