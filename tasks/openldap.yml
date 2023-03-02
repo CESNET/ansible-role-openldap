@@ -12,6 +12,36 @@
       - ansible_distribution_major_version in [ "10", "11" ]
     msg: "Only Debian 10/11 is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
 
+- name: "set up separate log for slapd"
+  block:
+    - name: "set separate log file using rsyslog"
+      copy:
+        dest: /etc/rsyslog.d/slapd.conf
+        content: |
+          :programname, isequal, "slapd" /var/log/slapd.log
+          & stop
+      register: rsyslog_slapd
+    - name: "set logrotate for slapd"
+      copy:
+        dest: /etc/logrotate.d/slapd.conf
+        content: |
+          /var/log/slapd.log {
+              rotate 4
+              weekly
+              notifempty
+              missingok
+              compress
+              create
+              postrotate
+                  /usr/lib/rsyslog/rsyslog-rotate
+              endscript
+          }
+    - name: "restart rsyslog service"
+      when: rsyslog_slapd.changed
+      systemd:
+        name: rsyslog
+        state: restarted
+
 - name: "compute base DN"
   set_fact:
     ldap_basedn: '{{ "dc=" + ldap_domain.split(".") | join(",dc=") }}'
@@ -224,15 +254,18 @@
         path: /etc/default/saslauthd
         regexp: 'START='
         line: 'START=yes'
+      register: saslauthd1
     - name: "saslauthd MECHANISMS=kerberos5"
       lineinfile:
         path: /etc/default/saslauthd
         regexp: 'MECHANISMS='
         line: 'MECHANISMS="kerberos5"'
-    - name: "start saslauthd"
+      register: saslauthd2
+    - name: "restart saslauthd"
       service:
         name: saslauthd
-        state: started
+        state: restarted
+      when: saslauthd1.changed or saslauthd2.changed
     - name: "sasl2 config"
       copy:
         dest: /usr/lib/sasl2/slapd.conf
