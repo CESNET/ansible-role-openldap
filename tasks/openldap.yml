@@ -1,9 +1,9 @@
-- name:  "Ansible 2.14+ required"
+- name: "Collection community.general version check ({{ lookup('community.general.collection_version', 'community.general') }})"
   assert:
     that:
-      - ansible_version is defined
-      - ansible_version.full is version_compare('2.14', '>=')
-    msg: "Required Ansible version is 7 with 2.14+ (core)"
+      - lookup('community.general.collection_version', 'community.general') is version('6.4.0','>=')
+    msg: "Required version is 6.4.0, this is {{lookup('community.general.collection_version', 'community.general') }}"
+    quiet: true
 
 - name: "Debian 10/11 required"
   assert:
@@ -11,6 +11,7 @@
       - ansible_distribution == "Debian"
       - ansible_distribution_major_version in [ "10", "11" ]
     msg: "Only Debian 10/11 is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
+    quiet: true
 
 - name: "set up separate log for slapd"
   block:
@@ -395,46 +396,37 @@
         group: openldap
         mode: '0700'
 
-    # workaround for https://github.com/ansible-collections/community.general/issues/6045
-    - name: "detect accesslog database entry"
-      community.general.ldap_search:
+    - name: "accesslog database"
+      ldap_entry:
         dn: "olcDatabase={2}mdb,cn=config"
-        scope: base
-      register: acclog
-      ignore_errors: yes
-    - name: "create LDIF for accesslog database"
-      when: acclog.failed
-      copy:
-        dest: /etc/ldap/accesslogdb.ldif
-        content: |
-          dn: olcDatabase={2}mdb,cn=config
-          changetype: add
-          objectClass: olcDatabaseConfig
-          objectClass: olcMdbConfig
-          olcDatabase: {2}mdb
+        xorder_discovery: disable
+        objectClass:
+          - olcDatabaseConfig
+          - olcMdbConfig
+        attributes:
+          olcDatabase: '{2}mdb'
           olcDbDirectory: /var/lib/ldap/accesslog
           olcSuffix: cn=accesslog
-          olcAccess: {0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read
-          olcLastMod: TRUE
-          olcLimits: {0}dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited
+          olcAccess: '{0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read'
+          olcLastMod: 'TRUE'
           olcMaxDerefDepth: 15
-          olcReadOnly: FALSE
+          olcReadOnly: 'FALSE'
+          olcLimits: 'dn.exact="cn=replication,{{ ldap_basedn }}" time=unlimited size=unlimited'
           olcSizeLimit: unlimited
           olcTimeLimit: unlimited
-          olcMonitoring: TRUE
-          olcDbCheckpoint: 0 0
-          olcDbIndex: entryCSN eq
-          olcDbIndex: objectClass eq
-          olcDbIndex: reqEnd eq
-          olcDbIndex: reqResult eq
-          olcDbIndex: reqStart eq
-          olcDbIndex: reqDN eq
-          olcDbMaxSize: 85899345920
-          olcDbMode: 0600
+          olcMonitoring: 'TRUE'
+          olcDbCheckpoint: '0 0'
+          olcDbIndex:
+            - entryCSN eq
+            - objectClass eq
+            - reqEnd eq
+            - reqResult eq
+            - reqStart eq
+            - reqDN eq
+          olcDbMode: '0600'
           olcDbSearchStack: 16
-    - name: "create accesslog database using ldapadd"
-      when: acclog.failed
-      command: "/usr/bin/ldapadd -Q -H ldapi:/// -Y EXTERNAL -f /etc/ldap/accesslogdb.ldif"
+          olcDbMaxsize: 85899345920
+        state: present
 
     - name: "accesslog overlay for main database"
       ldap_entry:
@@ -564,13 +556,63 @@
 - name: "slave replica"
   when: ldap_slave_replica
   block:
+    - name: "check existence of schema replication"
+      community.general.ldap_search:
+        dn: "olcDatabase={0}config,cn=config"
+        xorder_discovery: disable
+        scope: base
+      register: configdb
+
+    - name: "prepare attributes for schema replication"
+      set_fact:
+        cfgattrs:
+          olcSyncrepl: >-
+            {0}rid=002
+            provider={{ ldap_master_url }}
+            type=refreshAndPersist
+            retry="5 5 300 +"
+            searchbase="cn=schema,cn=config"
+            bindmethod=simple
+            binddn="cn=replication,{{ ldap_basedn }}"
+            credentials={{ ldap_replication_password }}
+            tls_cacert=/etc/ssl/certs/ca-certificates.crt
+
+    - name: "add olcMultiProvider if it is missing"
+      when: "'olcMultiProvider' not in configdb.results[0]"
+      set_fact:
+        cfgattrs: "{{ cfgattrs | combine({ 'olcMultiProvider': 'TRUE' }) }}"
+
+    - name: "set schema replication"
+      ldap_attrs:
+        dn: "olcDatabase={0}config,cn=config"
+        xorder_discovery: disable
+        attributes: "{{ cfgattrs }}"
+        ordered: yes
+        state: exact
+
+    - name: "check existence of data replication"
+      community.general.ldap_search:
+        dn: "olcDatabase={1}mdb,cn=config"
+        xorder_discovery: disable
+        scope: base
+      register: datadb
+
+    - name: "remove top object (it has different entryUUID than at the master)"
+      when: "'olcSyncrepl' not in datadb.results[0]"
+      ldap_entry:
+        state: absent
+        dn: "{{ ldap_basedn }}"
+        bind_dn: "{{ ldap_data_admin_dn }}"
+        bind_pw: "{{ ldap_data_password }}"
+
     # see https://www.openldap.org/doc/admin25/slapdconf2.html#olcSyncrepl for replication parameters
     - name: "data replication"
       ldap_attrs:
         dn: "olcDatabase={1}mdb,cn=config"
+        xorder_discovery: disable
         attributes:
           olcSyncrepl: >-
-            rid=001
+            {0}rid=001
             provider={{ ldap_master_url }}
             type=refreshAndPersist
             retry="5 5 300 +"
@@ -586,25 +628,3 @@
           olcUpdateRef: "{{ ldap_master_url }}"
         ordered: yes
         state: exact
-
-    - name: "check existence of schema replication"
-      community.general.ldap_search:
-        dn: "olcDatabase={0}config,cn=config"
-        scope: base
-      register: configdb
-    - name: "set schema replication"
-      when: "'olcSyncrepl' not in configdb.results[0]"
-      block:
-        - name: "create LDIF for setting schema replication"
-          copy:
-            dest: /etc/ldap/schema_sync.ldif
-            content: |
-              dn: olcDatabase={0}config,cn=config
-              changetype: modify
-              add: olcSyncrepl
-              olcSyncrepl: rid=002 provider={{ ldap_master_url }} type=refreshAndPersist retry="5 5 300 +" searchbase="cn=schema,cn=config" bindmethod=simple binddn="cn=replication,{{ ldap_basedn }}" credentials={{ ldap_replication_password }} tls_cacert=/etc/ssl/certs/ca-certificates.crt
-              -
-              add: olcMultiprovider
-              olcMultiprovider: TRUE
-        - name: "load LDIF for setting schema replication"
-          command: "/usr/bin/ldapmodify -Q -H ldapi:/// -Y EXTERNAL -f /etc/ldap/schema_sync.ldif"
