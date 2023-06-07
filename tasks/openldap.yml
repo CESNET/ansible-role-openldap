@@ -13,7 +13,17 @@
     msg: "Only Debian 10/11 is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
     quiet: true
 
-- name: "set up separate log for slapd"
+- name: "get package facts for detecting rsyslog and syslog-ng"
+  package_facts:
+    manager: "apt"
+
+- name: "delete /etc/logrotate.d/slapd.conf if it exists"
+  file:
+    path: /etc/logrotate.d/slapd.conf
+    state: absent
+
+- name: "set up separate log for slapd using rsyslog"
+  when: "'rsyslog' in ansible_facts.packages"
   block:
     - name: "set separate log file using rsyslog"
       copy:
@@ -24,7 +34,7 @@
       register: rsyslog_slapd
     - name: "set logrotate for slapd"
       copy:
-        dest: /etc/logrotate.d/slapd.conf
+        dest: /etc/logrotate.d/slapd
         content: |
           /var/log/slapd.log {
               rotate 4
@@ -41,6 +51,51 @@
       when: rsyslog_slapd.changed
       systemd:
         name: rsyslog
+        state: restarted
+
+- name: "set up separate log for slapd using syslog-ng"
+  when: "'syslog-ng' in ansible_facts.packages"
+  block:
+    - name: "set separate log file using syslog-ng"
+      copy:
+        dest: /etc/syslog-ng/conf.d/slapd.conf
+        content: |
+          #
+          # log slapd to a separate file only
+          #
+          destination d_slapd {
+            file("/var/log/slapd.log");
+          };
+          filter f_slapd {
+            program("slapd");
+          };
+          log {
+            source(s_src);
+            filter(f_slapd);
+            destination(d_slapd);
+            # do not write the messages into other log files
+            flags(final);
+          };
+      register: syslogng_slapd
+    - name: "set logrotate for slapd"
+      copy:
+        dest: /etc/logrotate.d/slapd
+        content: |
+          /var/log/slapd.log {
+              rotate 4
+              weekly
+              notifempty
+              missingok
+              compress
+              create
+              postrotate
+                  invoke-rc.d syslog-ng reload > /dev/null
+              endscript
+          }
+    - name: "restart syslog-ng service"
+      when: syslogng_slapd.changed
+      systemd:
+        name: syslog-ng
         state: restarted
 
 - name: "compute base DN"
@@ -119,7 +174,7 @@
     group: root
     mode: '0644'
 
-- name: "get package facts"
+- name: "get fresh package facts after installing slapd"
   package_facts:
     manager: "apt"
 - name: "detect slapd package version"
