@@ -105,6 +105,7 @@
     ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
 
 - name: "backports repo"
+  when: ansible_distribution_major_version in ['10']
   apt_repository:
     repo: "deb http://deb.debian.org/debian {{ ansible_distribution_release }}-backports main"
     state: present
@@ -149,7 +150,7 @@
 - name: "install software packages"
   apt:
     state: present
-    default_release: "{{ ansible_distribution_release }}-backports"
+    default_release: "{{ '' if ansible_distribution_major_version=='12' else ansible_distribution_release+'-backports' }}"
     name:
       - slapd
       - ldap-utils
@@ -160,7 +161,7 @@
 - name: "update libldap-common to latest version"
   apt:
     state: latest
-    default_release: "{{ ansible_distribution_release }}-backports"
+    default_release: "{{ '' if ansible_distribution_major_version=='12' else ansible_distribution_release+'-backports' }}"
     name: libldap-common
 
 - name: "make sure the /etc/ldap/ldap.conf file exists (it is part of package libldap-common)"
