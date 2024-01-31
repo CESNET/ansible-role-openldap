@@ -134,6 +134,11 @@
     vtype: boolean
     value: 'true'
 
+- name: "install debconf-utils with debconf-get-selections"
+  apt:
+    name: debconf-utils
+    state: present
+
 - name: "configure data admin password for OpenLDAP using debconf"
   debconf:
     name: slapd
@@ -142,7 +147,6 @@
     value: "{{ ldap_data_password }}"
   # wrongly reports as changed even when not changed, see https://github.com/ansible/ansible/issues/47676
   changed_when: False
-  no_log: True
   loop:
     - slapd/password1
     - slapd/password2
