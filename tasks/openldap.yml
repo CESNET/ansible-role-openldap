@@ -214,7 +214,6 @@
   no_log: True
 
 - name: "compute data admin password hash (not idempotent for salted hashes)"
-  when: ldap_strong_password_hashing
   command:
     argv: "{{ slappasswd_argv + [ '-s', ldap_data_password ] }}"
   register: ldap_data_admin_password_hash
@@ -222,7 +221,6 @@
   no_log: True
 
 - name: "set data admin password"
-  when: ldap_strong_password_hashing
   ldap_attrs:
     dn: olcDatabase={1}mdb,cn=config
     attributes:
