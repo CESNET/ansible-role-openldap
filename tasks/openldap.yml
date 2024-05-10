@@ -306,6 +306,10 @@
         name: saslauthd
         state: restarted
       when: saslauthd1.changed or saslauthd2.changed
+    - name: "enable saslauthd"
+      service:
+        name: saslauthd
+        enabled: true
     - name: "sasl2 config"
       copy:
         dest: /usr/lib/sasl2/slapd.conf
