@@ -60,3 +60,7 @@ ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
 # maximum size of database (object olcDatabase={1}mdb,cn=config attribute olcDbMaxSize) in bytes
 # default is 1 GiB
 ldap_mdb1_olcDbMaxSize: 1073741824
+
+# GnuTLS settings, see https://gnutls.org/manual/html_node/Priority-Strings.html for possible values
+# test with "docker run --rm -ti drwetter/testssl.sh --full -p machine:636"
+ldap_tls_cipher_suite: "SECURE192:-VERS-ALL:+VERS-TLS1.2:+VERS-TLS1.3"

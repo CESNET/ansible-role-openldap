@@ -264,6 +264,13 @@
     state: restarted
   when: secure_port_enabled.changed or ssl_ldif.changed
 
+- name: "set GnuTLS options"
+  ldap_attrs:
+    dn: cn=config
+    attributes:
+      olcTLSCipherSuite: "{{ ldap_tls_cipher_suite }}"
+    state: exact
+
 - name: "set olcDbMaxSize on olcDatabase={1}mdb"
   ldap_attrs:
     dn: "olcDatabase={1}mdb,cn=config"
