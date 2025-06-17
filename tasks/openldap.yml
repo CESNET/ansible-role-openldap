@@ -137,7 +137,7 @@
 - name: "install software packages"
   apt:
     state: present
-    default_release: "{{ '' if ansible_distribution_major_version=='12' else ansible_distribution_release+'-backports' }}"
+    default_release: "{{ '' if ansible_distribution_major_version is version('12','>=') else ansible_distribution_release+'-backports' }}"
     name:
       - slapd
       - ldap-utils
@@ -148,7 +148,7 @@
 - name: "update libldap-common to latest version"
   apt:
     state: latest
-    default_release: "{{ '' if ansible_distribution_major_version=='12' else ansible_distribution_release+'-backports' }}"
+    default_release: "{{ '' if ansible_distribution_major_version is version('12','>=') else ansible_distribution_release+'-backports' }}"
     name: libldap-common
 
 - name: "make sure the /etc/ldap/ldap.conf file exists (it is part of package libldap-common)"
@@ -163,14 +163,9 @@
 - name: "get fresh package facts after installing slapd"
   package_facts:
     manager: "apt"
-- name: "detect slapd package version"
+- name: "decide argon2 module name"
   set_fact:
-    slapd_24: >-
-      {{ ansible_facts.packages['slapd'][0].version is version('2.4', '>=')
-      and ansible_facts.packages['slapd'][0].version is version('2.5', '<') }}
-- name: "decide argon2 module name (different in 2.4 and 2.5 versions)"
-  set_fact:
-    argon2_module_name: "{{ 'pw-argon2' if slapd_24 else 'argon2' }}"
+    argon2_module_name: "argon2"
     default_hash: "{{ '{ARGON2}' if ldap_strong_password_hashing else '{SHA}' }}"
 - name: "decide parameters for slappasswd"
   set_fact:
@@ -181,16 +176,8 @@
 - debug:
     msg: >-
       slapd version: {{ ansible_facts.packages['slapd'][0].version }}
-      slapd_24: {{ slapd_24 }}
       argon2 module: {{ argon2_module_name }}
       slappasswd_argv: {{ slappasswd_argv }}
-
-- name: "install slapd-contrib with Argon2 key derivation function"
-  when: ldap_strong_password_hashing and slapd_24
-  apt:
-    default_release: "{{ ansible_distribution_release }}-backports"
-    name: slapd-contrib
-    state: present
 
 - name: "hold slapd package from upgrading"
   when: ldap_hold_package
@@ -265,6 +252,7 @@
   when: secure_port_enabled.changed or ssl_ldif.changed
 
 - name: "set GnuTLS options"
+  when: ansible_distribution_major_version is version('13','<')
   ldap_attrs:
     dn: cn=config
     attributes:
