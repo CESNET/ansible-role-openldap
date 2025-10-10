@@ -33,6 +33,14 @@ ldap_master_replica: no
 ldap_replication_password: 'test'
 ldap_slave_replica: no
 ldap_master_url: "ldaps://{{ inventory_hostname }}"
+
+# Name of accesslog DB used for handling delta-replications (including index).
+# When you have more than one DB in LDAP you might want to increase the index in the name
+# (e.g. when LDAP contains also DB for hostel accounts)
+# DBs named "{0}config" and "{1}mdb" are the ones supposed to be replicated (schema + data),
+# so by default accesslog db has +1 in its index.
+ldap_accesslog_db: "{2}mdb"
+
 #ldap_users:
 #  - user: proxy
 #    password: test
