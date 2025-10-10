@@ -436,13 +436,13 @@
 
     - name: "accesslog database"
       ldap_entry:
-        dn: "olcDatabase={2}mdb,cn=config"
+        dn: "olcDatabase={{ ldap_accesslog_db }},cn=config"
         xorder_discovery: disable
         objectClass:
           - olcDatabaseConfig
           - olcMdbConfig
         attributes:
-          olcDatabase: '{2}mdb'
+          olcDatabase: "{{ ldap_accesslog_db }}"
           olcDbDirectory: /var/lib/ldap/accesslog
           olcSuffix: cn=accesslog
           olcAccess: '{0}to dn.subtree="cn=accesslog" by dn.exact="cn=replication,{{ ldap_basedn }}" read'
@@ -491,7 +491,7 @@
 
     - name: "syncprov overlay for accesslog database"
       ldap_entry:
-        dn: "olcOverlay=syncprov,olcDatabase={2}mdb,cn=config"
+        dn: "olcOverlay=syncprov,olcDatabase={{ ldap_accesslog_db }},cn=config"
         objectClass:
           - olcSyncProvConfig
         attributes:
@@ -515,7 +515,7 @@
         dn: olcDatabase={0}config,cn=config
         attributes:
           olcAccess: >-
-            {0}to dn.subtree="cn=schema,cn=config" 
+            {0}to dn.subtree="cn=schema,cn=config"
             by dn.exact="cn=replication,{{ ldap_basedn }}" read
             by * break
         state: present
