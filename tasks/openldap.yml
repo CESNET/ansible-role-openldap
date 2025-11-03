@@ -165,19 +165,13 @@
     manager: "apt"
 - name: "decide argon2 module name"
   set_fact:
-    argon2_module_name: "argon2"
     default_hash: "{{ '{ARGON2}' if ldap_strong_password_hashing else '{SHA}' }}"
 - name: "decide parameters for slappasswd"
   set_fact:
     slappasswd_argv: >
       {{ [ 'slappasswd', '-h', default_hash ] +
-         ( [ '-o', 'module-load=/usr/lib/ldap/'+argon2_module_name+'.so' ] if  ldap_strong_password_hashing else [] )
+         ( [ '-o', 'module-load=/usr/lib/ldap/argon2.so ' + ldap_argon2_params ] if  ldap_strong_password_hashing else [] )
       }}
-- debug:
-    msg: >-
-      slapd version: {{ ansible_facts.packages['slapd'][0].version }}
-      argon2 module: {{ argon2_module_name }}
-      slappasswd_argv: {{ slappasswd_argv }}
 
 - name: "hold slapd package from upgrading"
   when: ldap_hold_package
@@ -343,7 +337,7 @@
     - name: "module argon2"
       when: ldap_strong_password_hashing
       set_fact:
-        olcModuleLoad_values: "{{ olcModuleLoad_values +  [ argon2_module_name ] }}"
+        olcModuleLoad_values: "{{ olcModuleLoad_values +  [ 'argon2.so ' + ldap_argon2_params ] }}"
     - name: "activate modules {{ olcModuleLoad_values }}"
       ldap_attrs:
         dn: cn=module{0},cn=config

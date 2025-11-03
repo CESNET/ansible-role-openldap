@@ -52,6 +52,8 @@ ldap_memberOf_overlay: no
 
 # whether to configure strong password hashing
 ldap_strong_password_hashing: no
+# see "man slappw-argon2" and https://nukib.gov.cz/download/publikace/podpurne_materialy/Minimalni_pozadavky_v4_FINAL.pdf
+ldap_argon2_params: "m=65536 t=5 p=4"
 
 # whether to hack the standard schema to allow empty groups
 ldap_allow_empty_groups: no
