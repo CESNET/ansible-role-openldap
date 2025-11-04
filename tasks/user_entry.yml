@@ -8,7 +8,7 @@
 
 # the entry is created only if it does not exist; existing entry is NOT modified
 - name: "create {{ user_entry.user }} user entry"
-  ldap_entry:
+  community.general.ldap_entry:
     dn: "cn={{ user_entry.user }},{{ ldap_basedn }}"
     objectClass:
       - simpleSecurityObject
@@ -20,9 +20,17 @@
     bind_dn: "{{ ldap_data_admin_dn }}"
     bind_pw: "{{ ldap_data_password }}"
 
+- name: "erase password for {{ user_entry.user }} to force rehash"
+  when: ldap_force_password_rehash
+  community.general.ldap_passwd:
+    dn: "cn={{ user_entry.user }},{{ ldap_basedn }}"
+    passwd: "**************"
+    bind_dn: "{{ ldap_data_admin_dn }}"
+    bind_pw: "{{ ldap_data_password }}"
+
 # password is set only if it is different
 - name: "set password for {{ user_entry.user }}"
-  ldap_passwd:
+  community.general.ldap_passwd:
     dn: "cn={{ user_entry.user }},{{ ldap_basedn }}"
     passwd: "{{ user_entry.password }}"
     bind_dn: "{{ ldap_data_admin_dn }}"
