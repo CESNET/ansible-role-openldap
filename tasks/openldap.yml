@@ -209,6 +209,13 @@
     state: exact
   no_log: True
 
+- name: "set olcLogLevel"
+  ldap_attrs:
+    dn: cn=config
+    attributes:
+      olcLogLevel: "{{ ldap_log_level }}"
+    state: exact
+
 - name: "add openldap user to ssl-cert group"
   user:
     name: openldap

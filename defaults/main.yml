@@ -77,3 +77,7 @@ ldap_mdb1_olcDbMaxSize: 1073741824
 # GnuTLS settings, see https://gnutls.org/manual/html_node/Priority-Strings.html for possible values
 # test with "docker run --rm -ti drwetter/testssl.sh --full -p machine:636"
 ldap_tls_cipher_suite: "SECURE192:-VERS-ALL:+VERS-TLS1.2:+VERS-TLS1.3"
+
+# Configure log level, see https://openldap.org/doc/admin24/slapdconfig.html (section 6.2.1.5.)
+# eg. single value "stats" or multi value like: "acl trace"
+ldap_log_level: "none"
