@@ -35,6 +35,8 @@ Ansible role for installing OpenLDAP server on Debian. It supports:
 * **ldap_allow_empty_groups** - whether to modify core schema to allow empty groups (default no)
 * **ldap_strong_password_hashing** - whether to configure strong password hashing as the default hashing method (default no)
 * **ldap_pass_through_authentication** - whether to configure pass-through authentication using Kerberos
+* **ldap_log_level** - list of log levels to use, eg. "stats" or multi-value 
+  like "acl trace".
 
 For midPoint, set ldap_memberOf_overlay, ldap_sssvlv_overlay and ldap_allow_empty_groups to yes.
 
