@@ -2,15 +2,15 @@
   assert:
     that:
       - lookup('community.general.collection_version', 'community.general') is version('6.4.0','>=')
-    msg: "Required version is 6.4.0, this is {{lookup('community.general.collection_version', 'community.general') }}"
+    fail_msg: "Required version is 6.4.0, this is {{lookup('community.general.collection_version', 'community.general') }}"
     quiet: true
 
 - name: "Debian 10+ required"
   assert:
     that:
-      - ansible_distribution == "Debian"
-      - ansible_distribution_major_version is version('10','>=')
-    msg: "Only Debian 10+ is supported, this is {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
+      - ansible_facts['distribution'] == "Debian"
+      - ansible_facts['distribution_major_version'] is version('10','>=')
+    fail_msg: "Only Debian 10+ is supported, this is {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
     quiet: true
 
 - name: "get package facts for detecting rsyslog and syslog-ng"
@@ -170,7 +170,7 @@
     selection: hold
 
 - name: "compute config admin password hash (not idempotent for salted hashes)"
-  command:
+  ansible.builtin.command:
     argv: "{{ slappasswd_argv + [ '-s', ldap_config_password ] }}"
   register: ldap_config_admin_password_hash
   changed_when: False
@@ -185,7 +185,7 @@
   no_log: True
 
 - name: "compute data admin password hash (not idempotent for salted hashes)"
-  command:
+  ansible.builtin.command:
     argv: "{{ slappasswd_argv + [ '-s', ldap_data_password ] }}"
   register: ldap_data_admin_password_hash
   changed_when: False
@@ -207,14 +207,14 @@
     state: exact
 
 - name: "add openldap user to ssl-cert group"
-  user:
+  ansible.builtin.user:
     name: openldap
     groups: ssl-cert
     append: yes
   register: openldap_ssl_cert_group
 
 - name: "restart OpenLDAP after openldap user added to group ssl-cert"
-  service:
+  ansible.builtin.service:
     name: slapd
     state: restarted
   when: openldap_ssl_cert_group.changed
@@ -231,19 +231,19 @@
 
 - name: "enable secure port, plain ldap and local connection"
   lineinfile:
-    dest: /etc/default/slapd
+    path: /etc/default/slapd
     regexp: ^SLAPD_SERVICES=
     line: SLAPD_SERVICES="ldaps:/// ldapi:/// ldap:///"
   register: secure_port_enabled
 
 - name: "restart OpenLDAP after enabling TLS"
-  service:
+  ansible.builtin.service:
     name: slapd
     state: restarted
   when: secure_port_enabled.changed or ssl_ldif.changed
 
 - name: "set GnuTLS options"
-  when: ansible_distribution_major_version is version('13','<')
+  when: ansible_facts['distribution_major_version'] is version('13','<')
   ldap_attrs:
     dn: cn=config
     attributes:
@@ -288,12 +288,12 @@
         line: 'MECHANISMS="kerberos5"'
       register: saslauthd2
     - name: "restart saslauthd"
-      service:
+      ansible.builtin.service:
         name: saslauthd
         state: restarted
       when: saslauthd1.changed or saslauthd2.changed
     - name: "enable saslauthd"
-      service:
+      ansible.builtin.service:
         name: saslauthd
         enabled: true
     - name: "sasl2 config"
@@ -304,12 +304,12 @@
           mech_list: plain login external
       register: sasl_first_pass
     - name: "add user openldap to group sasl"
-      user:
+      ansible.builtin.user:
         name: openldap
         groups: sasl
         append: yes
     - name: "restart OpenLDAP after enabling SASL"
-      service:
+      ansible.builtin.service:
         name: slapd
         state: restarted
       when: sasl_first_pass.changed
@@ -578,7 +578,7 @@
       register: f3
     - name: "restart slapd"
       when: f1.changed or f2.changed or f3.changed
-      service:
+      ansible.builtin.service:
         name: slapd
         state: restarted
 
