@@ -37,6 +37,14 @@ Ansible role for installing OpenLDAP server on Debian. It supports:
 * **ldap_pass_through_authentication** - whether to configure pass-through authentication using Kerberos
 * **ldap_log_level** - list of log levels to use, eg. "stats" or multi-value 
   like "acl trace".
+* **ldap_tls_1_3_require** - set to "yes" to require TLS 1.3 on ldaps:// 
+  endpoint (default is "no" - allows also TLS 1.2). Works only on 
+  Debian 13 hosts.
+* **ldap_tls_1_3_cipher_suite** - limits ciphers to 256+ bits (default is 
+  `TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256`). Set to empty 
+  string to allow all ciphers. Value is used only when 
+  *ldap_tls_1_3_require* is set to *yes*, otherwise value is unset from LDAP. 
+  Works only on Debian 13 hosts.
 
 For midPoint, set ldap_memberOf_overlay, ldap_sssvlv_overlay and ldap_allow_empty_groups to yes.
 

@@ -103,7 +103,7 @@
 - name: "compute data admin DN"
   set_fact:
     ldap_data_admin_dn: '{{ "cn=admin," + ldap_basedn }}'
-    
+
 # available debconf options for slapd are in https://salsa.debian.org/openldap-team/openldap/-/blob/master/debian/slapd.templates
 - name: "configure domain for OpenLDAP using debconf"
   debconf:
@@ -242,7 +242,20 @@
     state: restarted
   when: secure_port_enabled.changed or ssl_ldif.changed
 
-- name: "set GnuTLS options"
+- name: "prepare LDAP TLS attributes"
+  set_fact:
+    ldap_tls_attrs:
+      olcTLSProtocolMin: "{{ '3.4' if ldap_tls_1_3_require else [] }}"
+      olcTLSCipherSuite: "{{ ldap_tls_1_3_cipher_suite if (ldap_tls_1_3_require and ldap_tls_1_3_cipher_suite) else [] }}"
+
+- name: "set TLS on Debian 13+ (OpenSSL)"
+  when: ansible_facts['distribution_major_version'] is version('13', '>=')
+  ldap_attrs:
+    dn: cn=config
+    state: exact
+    attributes: "{{ ldap_tls_attrs }}"
+
+- name: "set TLS on Debian < 13 (GnuTLS)"
   when: ansible_facts['distribution_major_version'] is version('13','<')
   ldap_attrs:
     dn: cn=config

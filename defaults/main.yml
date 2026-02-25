@@ -81,3 +81,12 @@ ldap_tls_cipher_suite: "SECURE192:-VERS-ALL:+VERS-TLS1.2:+VERS-TLS1.3"
 # Configure log level, see https://openldap.org/doc/admin24/slapdconfig.html (section 6.2.1.5.)
 # eg. single value "stats" or multi value like: "acl trace"
 ldap_log_level: "none"
+
+############################
+# WORKS ONLY FOR Debian 13+
+############################
+
+# Set to "yes" to enable only TLS 1.3
+ldap_tls_1_3_require: no
+# Allow only 256+ bit ciphers (Uses OpenSSL settings, as on Debian 13 LDAP is connected to OpenSSL libs).
+ldap_tls_1_3_cipher_suite: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
