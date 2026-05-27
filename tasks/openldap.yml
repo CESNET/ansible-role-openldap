@@ -87,7 +87,7 @@
               compress
               create
               postrotate
-                  invoke-rc.d syslog-ng reload > /dev/null
+                  /usr/lib/rsyslog/rsyslog-rotate
               endscript
           }
     - name: "restart syslog-ng service"
